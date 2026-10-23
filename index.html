@@ -89,7 +89,7 @@ textarea{width:100%;min-height:210px;margin-top:14px;padding:12px;background:#0b
 <section class="step">
 <h2>Managers</h2>
 <label for="mgr">Manager principal</label><input id="mgr" type="text" autocomplete="off">
-<label for="tel">WhatsApp du manager principal</label><input id="tel" type="tel" inputmode="tel" placeholder="+242 …">
+<label for="tel">WhatsApp du manager principal</label><select id="phoneCountry" aria-label="Pays du numéro WhatsApp"><option value="242" selected>Congo-Brazzaville (+242)</option><option value="243">RDC / Kinshasa (+243)</option></select><input id="tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="06 500 27 84"><p class="note" style="text-align:left">Espaces, tirets, +242 / +243 et préfixe 00 acceptés. L’indicatif international est reconnu automatiquement; sinon, choisis le pays.</p>
 <label for="adj">Manager adjoint <small>(facultatif)</small></label><input id="adj" type="text" autocomplete="off">
 </section>
 
@@ -134,12 +134,25 @@ textarea{width:100%;min-height:210px;margin-top:14px;padding:12px;background:#0b
 </main>
 
 <script>
-var WHATSAPP = "24265002784"; /* +242 06 500 27 84 */
+var WHATSAPP = "242065002784"; /* +242 06 500 27 84 — zéro initial conservé */
 var SUBMISSION_ENDPOINT = document.querySelector('meta[name="nkl-supabase-function-url"]').content.trim();
 var $ = function(i){return document.getElementById(i)};
 if(!SUBMISSION_ENDPOINT){$("serviceNotice").hidden=false;$("go").disabled=true;$("go").textContent="Dépôt temporairement indisponible"}else{$("serviceNotice").hidden=true}
 function val(i){return $(i).value.trim()}
 function radio(n){var r=document.querySelector('input[name="'+n+'"]:checked');return r?r.value:""}
+function normalizeContactPhone(){
+ var digits=val("tel").replace(/\\D/g,""),code=$("phoneCountry").value;
+ if(!digits)return "";
+ if(digits.indexOf("00")===0)digits=digits.slice(2);
+ if(digits.indexOf("242")===0){code="242";digits=digits.slice(3)}
+ else if(digits.indexOf("243")===0){code="243";digits=digits.slice(3)}
+ if(code==="242")return digits.length===9&&digits.charAt(0)==="0"?"+242"+digits:"";
+ if(code==="243"){if(digits.length===10&&digits.charAt(0)==="0")digits=digits.slice(1);return digits.length===9?"+243"+digits:""}
+ return "";
+}
+function detectPhoneCountry(){var digits=val("tel").replace(/\\D/g,"");if(digits.indexOf("00")===0)digits=digits.slice(2);if(digits.indexOf("242")===0)$("phoneCountry").value="242";else if(digits.indexOf("243")===0)$("phoneCountry").value="243"}
+$("tel").addEventListener("input",detectPhoneCountry);
+$("tel").addEventListener("blur",function(){var phone=normalizeContactPhone();if(phone)$("tel").value=phone});
 function build(code){
  var j=[val("j1"),val("j2"),val("j3")].filter(Boolean).join(", ")||"à confirmer";
  return ["NKOLO LEAGUE – PRÉ-INSCRIPTION","Code club : "+code,"Club : "+val("club"),"École : "+val("ecole"),"Arrondissement : "+arrLabel(),
@@ -149,7 +162,7 @@ function build(code){
 var STEPS=5,cur=1,titles=["Ton club","Catégorie","Managers","Joueurs","Paiement"];
 function check(n){var e=[];
  if(n==1){if(!val("club"))e.push("Écris le nom du club.");if(!val("ecole"))e.push("Écris l’école ou l’université.");if(!val("arr"))e.push("Choisis l’arrondissement.");if(val("arr")=="Autre"&&!val("autre"))e.push("Précise ton arrondissement.")}
- if(n==3){if(!val("mgr"))e.push("Écris le nom du manager principal.");if(val("tel").replace(/\D/g,"").length<8)e.push("Écris un numéro WhatsApp valide.")}
+ if(n==3){if(!val("mgr"))e.push("Écris le nom du manager principal.");if(!normalizeContactPhone())e.push("Vérifie le numéro : 9 chiffres après +242 (ex. 06 500 27 84) ou un numéro RDC valide avec +243.")}
  if(n==5&&!$("ok").checked)e.push("Coche la confirmation.");if(n==5&&!radio("cat"))e.push("Choisis une catégorie.");if(n==5&&!radio("pay"))e.push("Choisis un moyen de paiement prévu.");
  return e}
 function showErr(e){var b=$("err");if(e.length){b.textContent=e.join(" ");b.hidden=false}else b.hidden=true}
@@ -168,7 +181,7 @@ $("go").onclick=async function(){var box=$("err");
  var members=[{display_name:val("mgr"),member_role:"team_manager"}];
  if(val("adj"))members.push({display_name:val("adj"),member_role:"assistant_manager"});
  ["j1","j2","j3"].forEach(function(id){if(val(id))members.push({display_name:val(id),member_role:"player"})});
- var payload={club_name:val("club"),school_name:val("ecole"),borough:arrLabel(),category:radio("cat")==="Premium (25 000 FCFA)"?"premium":"standard",planned_payment_method:radio("pay"),tiktok_pseudo:val("tt"),student_confirmation:$("ok").checked,contact_name:val("mgr"),contact_phone:val("tel"),members:members};
+ var payload={club_name:val("club"),school_name:val("ecole"),borough:arrLabel(),category:radio("cat")==="Premium (25 000 FCFA)"?"premium":"standard",planned_payment_method:radio("pay"),tiktok_pseudo:val("tt"),student_confirmation:$("ok").checked,contact_name:val("mgr"),contact_phone:normalizeContactPhone(),members:members};
  try{
   if(!SUBMISSION_ENDPOINT)throw new Error("Le formulaire n’est pas encore relié au serveur de pré-inscription.");
   var data=new FormData();data.append("application",JSON.stringify(payload));
@@ -188,7 +201,7 @@ $("copy").onclick=function(){
  try{navigator.clipboard.writeText(t.value).then(ok,function(){t.select();try{document.execCommand("copy");ok()}catch(x){}})}
  catch(x){t.select();try{document.execCommand("copy");ok()}catch(y){}}};
 $("again").onclick=function(){
- ["club","ecole","arr","autre","mgr","tel","adj","j1","j2","j3","tt"].forEach(function(i){$(i).value=""});$("ok").checked=false;
+ ["club","ecole","arr","autre","mgr","tel","adj","j1","j2","j3","tt"].forEach(function(i){$(i).value=""});$("phoneCountry").value="242";$("ok").checked=false;
  $("done").style.display="none";$("formView").style.display="block";showErr([]);$("autreBox").hidden=true;show(1)};
 $("arr").onchange=function(){$("autreBox").hidden=this.value!="Autre"};
 show(1);
